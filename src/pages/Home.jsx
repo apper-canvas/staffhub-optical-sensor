@@ -1,48 +1,15 @@
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'react-toastify';
+import { useDispatch, useSelector } from 'react-redux';
 import getIcon from '../utils/iconUtils';
 import MainFeature from '../components/MainFeature';
-
-// Sample employee data to simulate backend data
-const initialEmployees = [
-  {
-    id: 1,
-    firstName: "Jessica",
-    lastName: "Chen",
-    email: "jessica.chen@staffhub.com",
-    phoneNumber: "555-123-4567",
-    department: "Engineering",
-    position: "Senior Developer",
-    dateHired: "2020-06-15",
-    status: "active",
-    profileImage: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?q=80&w=200&auto=format&fit=crop"
-  },
-  {
-    id: 2,
-    firstName: "Michael",
-    lastName: "Rodriguez",
-    email: "michael.r@staffhub.com",
-    phoneNumber: "555-987-6543",
-    department: "Marketing",
-    position: "Marketing Manager",
-    dateHired: "2019-02-20",
-    status: "active",
-    profileImage: "https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?q=80&w=200&auto=format&fit=crop"
-  },
-  {
-    id: 3,
-    firstName: "Sarah",
-    lastName: "Johnson",
-    email: "sarah.j@staffhub.com",
-    phoneNumber: "555-345-6789",
-    department: "Human Resources",
-    position: "HR Specialist",
-    dateHired: "2021-04-10",
-    status: "on leave",
-    profileImage: "https://images.unsplash.com/photo-1573497019940-1c28c88b4f3e?q=80&w=200&auto=format&fit=crop"
-  }
-];
+import { 
+  fetchEmployeesAsync,
+  updateEmployeeStatusAsync,
+  deleteEmployeeAsync,
+  setFilterCriteria
+} from '../store/employeeSlice';
 
 // Sample departments
 const departments = ["All", "Engineering", "Marketing", "Human Resources", "Finance", "Sales", "Operations"];
@@ -56,55 +23,100 @@ function Home() {
   const SearchIcon = getIcon('Search');
   const FilterIcon = getIcon('Filter');
   const ChevronDownIcon = getIcon('ChevronDown');
+  const TrashIcon = getIcon('Trash');
+  const EditIcon = getIcon('Edit');
   
-  const [employees, setEmployees] = useState(initialEmployees);
-  const [filteredEmployees, setFilteredEmployees] = useState(initialEmployees);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDepartment, setSelectedDepartment] = useState('All');
+  const dispatch = useDispatch();
+  const { employees, filteredEmployees, status, error, filterCriteria } = useSelector(state => state.employees);
+  
   const [showFilters, setShowFilters] = useState(false);
-  const [selectedStatus, setSelectedStatus] = useState('All');
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState(null);
   
-  // Handle search and filtering
+  // Fetch employees on component mount
   useEffect(() => {
-    let results = employees;
-    
-    // Apply search
-    if (searchTerm) {
-      results = results.filter(
-        employee => 
-          employee.firstName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          employee.lastName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          employee.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          employee.position.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+    if (status === 'idle') {
+      dispatch(fetchEmployeesAsync());
     }
-    
-    // Apply department filter
-    if (selectedDepartment !== 'All') {
-      results = results.filter(employee => employee.department === selectedDepartment);
-    }
-    
-    // Apply status filter
-    if (selectedStatus !== 'All') {
-      results = results.filter(employee => employee.status === selectedStatus.toLowerCase());
-    }
-    
-    setFilteredEmployees(results);
-  }, [searchTerm, selectedDepartment, selectedStatus, employees]);
+  }, [status, dispatch]);
+  
+  // Handle search change
+  const handleSearchChange = (e) => {
+    dispatch(setFilterCriteria({ searchTerm: e.target.value }));
+  };
+  
+  // Handle department filter change
+  const handleDepartmentChange = (e) => {
+    dispatch(setFilterCriteria({ department: e.target.value }));
+  };
+  
+  // Handle status filter change
+  const handleStatusChange = (e) => {
+    dispatch(setFilterCriteria({ status: e.target.value }));
+  };
   
   // Handle adding a new employee from the MainFeature component
   const handleAddEmployee = (newEmployee) => {
-    const updatedEmployees = [...employees, {
-      ...newEmployee,
-      id: employees.length + 1,
-      status: 'active',
-      dateHired: new Date().toISOString().slice(0, 10),
-      profileImage: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200&auto=format&fit=crop"
-    }];
-    
-    setEmployees(updatedEmployees);
     toast.success(`${newEmployee.firstName} ${newEmployee.lastName} added successfully!`);
   };
+  
+  // Handle deleting an employee
+  const handleDeleteEmployee = async (employeeId) => {
+    setIsDeleting(true);
+    try {
+      await dispatch(deleteEmployeeAsync(employeeId)).unwrap();
+      toast.success("Employee deleted successfully");
+    } catch (error) {
+      toast.error(error || "Failed to delete employee");
+    } finally {
+      setIsDeleting(false);
+      setSelectedEmployee(null);
+    }
+  };
+  
+  // Handle toggling employee status
+  const handleToggleStatus = async (employee) => {
+    const newStatus = employee.status === 'active' ? 'on leave' : 'active';
+    try {
+      await dispatch(updateEmployeeStatusAsync({ 
+        employeeId: employee.Id, 
+        status: newStatus 
+      })).unwrap();
+      toast.success(`Employee status updated to ${newStatus}`);
+    } catch (error) {
+      toast.error(error || "Failed to update employee status");
+    }
+  };
+  
+  // Loading state
+  if (status === 'loading' && employees.length === 0) {
+    return (
+      <div className="container mx-auto px-4 py-8 flex items-center justify-center min-h-[60vh]">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <p className="text-lg">Loading employees...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Error state
+  if (status === 'failed' && error) {
+    return (
+      <div className="container mx-auto px-4 py-8">
+        <div className="bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200 p-4 rounded-lg">
+          <h3 className="text-lg font-semibold mb-2">Error Loading Data</h3>
+          <p>{error}</p>
+          <button 
+            onClick={() => dispatch(fetchEmployeesAsync())}
+            className="mt-4 px-4 py-2 bg-red-200 dark:bg-red-800 rounded-lg"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
   
   return (
     <div className="container mx-auto px-4 py-8">
@@ -219,8 +231,8 @@ function Home() {
                     type="text"
                     placeholder="Search employees..."
                     className="input pl-10"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                    value={filterCriteria.searchTerm}
+                    onChange={handleSearchChange}
                   />
                 </div>
                 
@@ -248,8 +260,8 @@ function Home() {
                   <select
                     id="department"
                     className="input"
-                    value={selectedDepartment}
-                    onChange={(e) => setSelectedDepartment(e.target.value)}
+                    value={filterCriteria.department}
+                    onChange={handleDepartmentChange}
                   >
                     {departments.map(dept => (
                       <option key={dept} value={dept}>{dept}</option>
@@ -262,8 +274,8 @@ function Home() {
                   <select
                     id="status"
                     className="input"
-                    value={selectedStatus}
-                    onChange={(e) => setSelectedStatus(e.target.value)}
+                    value={filterCriteria.status}
+                    onChange={handleStatusChange}
                   >
                     <option value="All">All</option>
                     <option value="Active">Active</option>
@@ -278,7 +290,7 @@ function Home() {
                 <div className="grid gap-4">
                   {filteredEmployees.map((employee) => (
                     <motion.div
-                      key={employee.id}
+                      key={employee.Id}
                       className="flex flex-col sm:flex-row items-start sm:items-center p-4 rounded-xl hover:bg-surface-100 dark:hover:bg-surface-800 border border-surface-200 dark:border-surface-700"
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -312,15 +324,33 @@ function Home() {
                           <p className="text-sm font-medium">{employee.email}</p>
                         </div>
                         
-                        <div>
-                          <p className="text-xs text-surface-500 dark:text-surface-400">Status</p>
-                          <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                            employee.status === 'active' 
-                              ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
-                              : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
-                          }`}>
-                            {employee.status.charAt(0).toUpperCase() + employee.status.slice(1)}
-                          </span>
+                        <div className="flex items-center gap-2">
+                          <div>
+                            <p className="text-xs text-surface-500 dark:text-surface-400">Status</p>
+                            <button
+                              onClick={() => handleToggleStatus(employee)}
+                              className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                employee.status === 'active' 
+                                  ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' 
+                                  : 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400'
+                              }`}
+                            >
+                              {employee.status.charAt(0).toUpperCase() + employee.status.slice(1)}
+                            </button>
+                          </div>
+                          
+                          <button
+                            onClick={() => {
+                              setSelectedEmployee(employee);
+                              if (confirm(`Are you sure you want to delete ${employee.firstName} ${employee.lastName}?`)) {
+                                handleDeleteEmployee(employee.Id);
+                              }
+                            }}
+                            className="p-1 rounded-full bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400 hover:bg-red-200 dark:hover:bg-red-800/30"
+                            disabled={isDeleting && selectedEmployee?.Id === employee.Id}
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
                         </div>
                       </div>
                     </motion.div>

@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-toastify';
+import { useDispatch } from 'react-redux';
 import getIcon from '../utils/iconUtils';
+import { addEmployeeAsync } from '../store/employeeSlice';
 
 function MainFeature({ onAddEmployee }) {
   // Icon declarations at the top
@@ -10,6 +12,7 @@ function MainFeature({ onAddEmployee }) {
   const XCircleIcon = getIcon('XCircle');
   const SlidersIcon = getIcon('Sliders');
 
+  const dispatch = useDispatch();
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [formData, setFormData] = useState({
     firstName: '',
@@ -17,10 +20,13 @@ function MainFeature({ onAddEmployee }) {
     email: '',
     phoneNumber: '',
     department: '',
-    position: ''
+    position: '',
+    dateHired: new Date().toISOString().slice(0, 10),
+    status: 'active',
+    profileImage: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200&auto=format&fit=crop"
   });
   const [errors, setErrors] = useState({});
-  const [formSubmitted, setFormSubmitted] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Sample departments
   const departments = ["Engineering", "Marketing", "Human Resources", "Finance", "Sales", "Operations"];
@@ -77,19 +83,34 @@ function MainFeature({ onAddEmployee }) {
     }
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (validateForm()) {
-      setFormSubmitted(true);
+      setIsSubmitting(true);
       
-      // Simulate a delay (like an API call)
-      setTimeout(() => {
-        onAddEmployee(formData);
-        setFormSubmitted(false);
-        setIsFormOpen(false);
+      try {
+        // Format data for the API
+        const employeeData = {
+          ...formData,
+          Name: `${formData.firstName} ${formData.lastName}`,
+        };
+        
+        // Dispatch the async action to add the employee
+        const resultAction = await dispatch(addEmployeeAsync(employeeData)).unwrap();
+        
+        // Call the callback to update UI
+        onAddEmployee(resultAction);
+        
+        // Reset form and close
         resetForm();
-      }, 1500);
+        setIsFormOpen(false);
+        toast.success(`${formData.firstName} ${formData.lastName} added successfully!`);
+      } catch (error) {
+        toast.error(error || "Failed to add employee");
+      } finally {
+        setIsSubmitting(false);
+      }
     } else {
       toast.error("Please fix the errors in the form");
     }
@@ -102,7 +123,10 @@ function MainFeature({ onAddEmployee }) {
       email: '',
       phoneNumber: '',
       department: '',
-      position: ''
+      position: '',
+      dateHired: new Date().toISOString().slice(0, 10),
+      status: 'active',
+      profileImage: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?q=80&w=200&auto=format&fit=crop"
     });
     setErrors({});
   };
@@ -141,7 +165,7 @@ function MainFeature({ onAddEmployee }) {
             transition={{ duration: 0.3 }}
             className="px-6 py-4 overflow-hidden"
           >
-            {formSubmitted ? (
+            {isSubmitting ? (
               <motion.div 
                 className="flex flex-col items-center justify-center py-8"
                 initial={{ opacity: 0, scale: 0.9 }}
@@ -279,6 +303,7 @@ function MainFeature({ onAddEmployee }) {
                   <button
                     type="submit"
                     className="btn btn-primary flex items-center gap-2"
+                    disabled={isSubmitting}
                   >
                     <CheckCircleIcon className="h-4 w-4" />
                     <span>Add Employee</span>
